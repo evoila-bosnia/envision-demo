@@ -1,0 +1,69 @@
+# Grafana UI — viewed in-browser (accepted deviation; no Grafana connector).
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-lgtm-grafana
+  labels:
+    app: otel-lgtm
+    envision.evoila/expose: loadbalancer   # Foundation LB VIP
+spec:
+  type: ClusterIP        # promoted to LoadBalancer by overlays/envision
+  selector: { app: otel-lgtm }
+  ports:
+    - { name: grafana, port: 3000, targetPort: grafana, protocol: TCP }
+---
+# In-cluster OTLP sink — apps + the otel-demo collector export here. Stays ClusterIP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-lgtm
+  labels: { app: otel-lgtm }
+spec:
+  type: ClusterIP
+  selector: { app: otel-lgtm }
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc, protocol: TCP }
+    - { name: otlp-http, port: 4318, targetPort: otlp-http, protocol: TCP }
+---
+# LGTM query APIs the MEHO prometheus/loki/tempo connectors dial.
+# Prometheus is exposed on a VIP (the app-up Sensor + agent queries reach it).
+# Loki/Tempo default to ClusterIP; flip the expose label to give them VIPs only
+# if you register loki/tempo targets that MEHO must reach from the mgmt cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-lgtm-prometheus
+  labels:
+    app: otel-lgtm
+    envision.evoila/expose: loadbalancer
+spec:
+  type: ClusterIP        # promoted to LoadBalancer by overlays/envision
+  selector: { app: otel-lgtm }
+  ports:
+    - { name: promql, port: 9090, targetPort: 9090, protocol: TCP }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-lgtm-loki
+  labels:
+    app: otel-lgtm
+    # envision.evoila/expose: loadbalancer   # uncomment to give Loki a VIP
+spec:
+  type: ClusterIP
+  selector: { app: otel-lgtm }
+  ports:
+    - { name: loki, port: 3100, targetPort: 3100, protocol: TCP }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-lgtm-tempo
+  labels:
+    app: otel-lgtm
+    # envision.evoila/expose: loadbalancer   # uncomment to give Tempo a VIP
+spec:
+  type: ClusterIP
+  selector: { app: otel-lgtm }
+  ports:
+    - { name: tempo, port: 3200, targetPort: 3200, protocol: TCP }

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-lgtm
+  labels: { app: otel-lgtm }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # single RWO PVC
+  selector:
+    matchLabels: { app: otel-lgtm }
+  template:
+    metadata:
+      labels: { app: otel-lgtm }
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: otel-lgtm
+          image: grafana/otel-lgtm:0.33.1   # pinned (release v0.33.1). VERIFY tag at apply.
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: envision   # demo-only; rotate/secret-ref for anything non-demo
+          ports:
+            - { name: grafana,   containerPort: 3000, protocol: TCP }
+            - { name: otlp-grpc, containerPort: 4317, protocol: TCP }
+            - { name: otlp-http, containerPort: 4318, protocol: TCP }
+          readinessProbe:
+            httpGet: { path: /api/health, port: grafana }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data     # LGTM persists prom/loki/tempo under /data; verify at apply
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits:   { cpu: "2",  memory: 2Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: otel-lgtm-data

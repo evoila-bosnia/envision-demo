@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo
+  labels:
+    app: podinfo
+    envision.evoila/expose: loadbalancer   # -> Foundation LB VIP (via envision component)
+spec:
+  type: ClusterIP        # promoted to LoadBalancer by overlays/envision
+  selector: { app: podinfo }
+  ports:
+    - name: http
+      port: 9898
+      targetPort: http
+      protocol: TCP

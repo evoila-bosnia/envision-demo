@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: podinfo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/evoila-bosnia/envision-demo.git
+    targetRevision: main
+    path: apps/podinfo/overlays/envision
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envision-demo
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ CreateNamespace=true ]

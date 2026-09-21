@@ -1,0 +1,8 @@
+# JSON6902 — adds spec.storageClassName to each PVC.
+# >>> EDIT the value below to the NFS-SPBM-derived StorageClass name (Waves 2-3). <<<
+# The Supervisor creates one StorageClass per storage policy assigned to the
+# vSphere Namespace and propagates it into the VKS guest cluster in two binding
+# modes (Immediate / WaitForFirstConsumer). Name the exact one here; no default.
+- op: add
+  path: /spec/storageClassName
+  value: nfs-c3env1-supervisor

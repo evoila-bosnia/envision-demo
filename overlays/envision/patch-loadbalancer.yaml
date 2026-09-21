@@ -1,0 +1,11 @@
+# JSON6902 — promotes an exposed Service to a Foundation-LB VIP.
+# Foundation Load Balancer creates one virtual server per LoadBalancer Service
+# and assigns a VIP from its configured pool. Default = auto-assign (leave the
+# loadBalancerIP line commented). To PIN a VIP once the range is known (Waves 2-3),
+# uncomment the second op and set an address inside the Foundation LB pool.
+- op: replace
+  path: /spec/type
+  value: LoadBalancer
+# - op: add
+#   path: /spec/loadBalancerIP
+#   value: REPLACE_ME_LB_VIP

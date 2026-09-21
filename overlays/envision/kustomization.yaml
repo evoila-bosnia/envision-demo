@@ -1,0 +1,28 @@
+# =============================================================================
+#  ENVISION overlay  —  THE SINGLE PLACE where the two Wave 2/3 unknowns live.
+#  Every app overlay (apps/*/overlays/envision) includes this Component, so the
+#  StorageClass name and LoadBalancer behaviour are set here ONCE and inherited.
+#
+#  FILL THESE IN once Waves 2-3 create the VKS guest cluster + namespace:
+#    1. STORAGE_CLASS  -> patch-storageclass.yaml   (name of the SPBM/NFS-derived
+#                         StorageClass the Supervisor propagates into the guest;
+#                         NO default is assumed — it must be named explicitly)
+#    2. LB behaviour   -> patch-loadbalancer.yaml    (Foundation LB; default is
+#                         auto-assigned VIP, optionally pin loadBalancerIP)
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+namespace: envision-demo
+
+patches:
+  # (1) StorageClass — applied to EVERY PersistentVolumeClaim in the app.
+  - path: patch-storageclass.yaml
+    target:
+      kind: PersistentVolumeClaim
+  # (2) LoadBalancer — applied only to Services labelled
+  #     envision.evoila/expose=loadbalancer (Grafana, podinfo). OTLP stays ClusterIP.
+  - path: patch-loadbalancer.yaml
+    target:
+      kind: Service
+      labelSelector: "envision.evoila/expose=loadbalancer"

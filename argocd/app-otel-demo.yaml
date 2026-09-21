@@ -1,0 +1,58 @@
+# OpenTelemetry Demo — REDUCED. The chart bundles its own grafana/prometheus/
+# jaeger/opensearch; we DISABLE all four (the LGTM all-in-one replaces them) and
+# point the demo's OpenTelemetry Collector at otel-lgtm's OTLP endpoint. ArgoCD
+# renders the Helm chart in-cluster (no client-side helm needed here — that
+# accepted deviation applies only to installing ArgoCD itself).
+#
+# !! VERIFY the opentelemetry-collector.config override against chart
+#    opentelemetry-demo-0.42.0's DEFAULT collector config before first sync:
+#    the default defines exporters (otlp/jaeger, otlphttp/prometheus, opensearch)
+#    and references them in pipelines. Replacing the per-pipeline `exporters`
+#    lists with [otlp/lgtm] drops the removed backends (unreferenced exporters
+#    are never instantiated, so leaving them defined is harmless).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-demo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-demo
+    targetRevision: 0.42.0          # chart 0.42.0 -> appVersion 3.1.0 (pinned)
+    helm:
+      releaseName: otel-demo
+      values: |
+        # --- drop the demo's bundled observability stack (LGTM replaces it) ---
+        jaeger:     { enabled: false }
+        prometheus: { enabled: false }
+        grafana:    { enabled: false }
+        opensearch: { enabled: false }
+        otel-ebpf-profiler: { enabled: false }
+        # --- route the demo collector to the LGTM all-in-one OTLP sink ---
+        opentelemetry-collector:
+          enabled: true
+          config:
+            exporters:
+              otlp/lgtm:
+                endpoint: otel-lgtm.envision-demo.svc.cluster.local:4317
+                tls: { insecure: true }
+            service:
+              pipelines:
+                traces:  { exporters: [otlp/lgtm] }
+                metrics: { exporters: [otlp/lgtm] }
+                logs:    { exporters: [otlp/lgtm] }
+        # --- expose the demo UI on a Foundation LB VIP (verify key vs 0.42.0) ---
+        components:
+          frontend-proxy:
+            service:
+              type: LoadBalancer
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envision-demo
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ CreateNamespace=true ]
