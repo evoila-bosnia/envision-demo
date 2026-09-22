@@ -1,6 +1,6 @@
-# OPTIONAL. #2936 says "project default", so the Application CRs below use
-# project: default. Apply this only if you want a scoped project instead;
-# then flip spec.project on each Application from 'default' to 'envision'.
+# OPTIONAL. The Application CRs below use project: default. Apply this only if
+# you want a scoped project instead; then flip spec.project on each Application
+# from 'default' to 'envision'.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:

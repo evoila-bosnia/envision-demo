@@ -1,8 +1,8 @@
 # envision-demo — Envision 2026 stand GitOps repo
 
 The demo application + observability layer visitors see and drive at the Envision
-2026 stand. Everything is deployed onto the **VKS guest cluster** in lab estate
-**c3env1**, driven end-to-end through the **MEHO backplane** in the **envision
+2026 stand. Everything is deployed onto **the stand's VKS guest cluster**,
+driven end-to-end through the **MEHO backplane** in the **envision
 tenant**. ArgoCD (installed on the guest cluster) reconciles this repo.
 
 ## What's here
@@ -18,12 +18,16 @@ tenant**. ArgoCD (installed on the guest cluster) reconciles this repo.
 - podinfo image `ghcr.io/stefanprodan/podinfo:6.15.0`
 - otel-lgtm image `grafana/otel-lgtm:0.33.1`
 - opentelemetry-demo Helm chart `0.42.0` (appVersion 3.1.0)
-- ArgoCD install manifest `v3.3.9` (matches the `argocd-api-3.x` connector / `rdc-argocd`)
+- ArgoCD install manifest `v3.3.9` (matches the `argocd-api-3.x` connector)
 
 ## The two unknowns (set ONCE, in `overlays/envision/`)
 1. **StorageClass** — `overlays/envision/patch-storageclass.yaml`: replace
    `REPLACE_ME_STORAGE_CLASS` with the NFS-SPBM-policy-derived StorageClass the
    Supervisor propagates into the guest cluster (named explicitly; no default).
+   The StorageClass name in `overlays/envision/patch-storageclass.yaml` is a
+   cluster-side value that must match the StorageClass the target cluster
+   actually exposes, so it is functional — change it only to match the cluster,
+   never for cosmetic reasons.
 2. **LoadBalancer** — `overlays/envision/patch-loadbalancer.yaml`: Foundation LB,
    VIP auto-assigned by default; uncomment `loadBalancerIP` to pin one from the pool.
 
@@ -32,6 +36,14 @@ Both are consumed by every app overlay via the shared kustomize **Component**
 there is exactly one edit site for each. The OpenTelemetry Demo (Helm) carries its
 own LB knob (`components.frontend-proxy.service.type`) in `argocd/app-otel-demo.yaml`
 and is stateless (no StorageClass needed).
+
+## Secrets (created out of band)
+The otel-lgtm Deployment reads its Grafana admin credentials from a Kubernetes
+Secret named `grafana-admin` in the `envision-demo` namespace, with keys
+`admin-user` and `admin-password`. This Secret is **not** in this repo — the
+operator creates it on the cluster out of band (governed, from a Vault
+reference). Because the env vars use `optional: false`, the otel-lgtm pod will
+not start until the `grafana-admin` Secret exists in the namespace.
 
 ## Namespaces
 - `argocd` — ArgoCD control plane (installed via `k8s.apply`).

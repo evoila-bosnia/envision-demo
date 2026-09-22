@@ -28,10 +28,22 @@ spec:
           image: grafana/otel-lgtm:0.33.1   # pinned (release v0.33.1). VERIFY tag at apply.
           imagePullPolicy: IfNotPresent
           env:
+            # Grafana admin credentials come from the out-of-band Secret
+            # 'grafana-admin' in this namespace (created governed from a Vault
+            # ref by the operator; see README). optional: false fails closed —
+            # the pod will not start until the Secret exists.
             - name: GF_SECURITY_ADMIN_USER
-              value: admin
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: admin-user
+                  optional: false
             - name: GF_SECURITY_ADMIN_PASSWORD
-              value: envision   # demo-only; rotate/secret-ref for anything non-demo
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin
+                  key: admin-password
+                  optional: false
           ports:
             - { name: grafana,   containerPort: 3000, protocol: TCP }
             - { name: otlp-grpc, containerPort: 4317, protocol: TCP }
