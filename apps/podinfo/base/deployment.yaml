@@ -14,6 +14,15 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9898"
     spec:
+      # PodSecurity 'restricted': the podinfo image ships a non-root 'app' user
+      # (uid 100 / gid 101) and a world-executable binary at /home/app/podinfo,
+      # so we pin that uid explicitly (runAsNonRoot needs a numeric uid to verify).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: podinfo
           image: ghcr.io/stefanprodan/podinfo:6.15.0   # pinned (release 6.15.0)
@@ -32,6 +41,13 @@ spec:
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             initialDelaySeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           resources:
             requests: { cpu: 25m, memory: 32Mi }
             limits:   { cpu: 200m, memory: 64Mi }
