@@ -35,6 +35,42 @@ spec:
         # --- route the demo collector to the LGTM all-in-one OTLP sink ---
         opentelemetry-collector:
           enabled: true
+          # Run the bundled collector as a Deployment, not the chart's default
+          # DaemonSet. In daemonset mode the chart renders it as
+          # `otel-collector-agent` with hostPort receivers and a hostPath
+          # (`/hostfs`, from the hostMetrics preset) — both are rejected by the
+          # namespace's PodSecurity `baseline` enforcement, so the pod is never
+          # admitted and the Application hangs `Progressing`. A single-replica
+          # Deployment is a gateway collector that needs no host access: the
+          # demo microservices push OTLP to it over the cluster network.
+          mode: deployment
+          replicaCount: 1
+          # Disable the host-bound presets. hostMetrics mounts the node root at
+          # /hostfs (breaks baseline); kubeletMetrics scrapes each node's kubelet
+          # and only makes sense per-node (daemonset). kubernetesAttributes and
+          # clusterMetrics stay on: both talk only to the Kubernetes API (via the
+          # chart's ServiceAccount + ClusterRole), need no host access, and keep
+          # cluster-level telemetry flowing to LGTM.
+          presets:
+            hostMetrics:   { enabled: false }
+            kubeletMetrics: { enabled: false }
+          # PodSecurity `restricted` securityContext for the collector pod. The
+          # chart leaves these empty by default; the demo's sibling PSA PR
+          # (fix/psa-restricted-compliance) hardens every other component but
+          # could not cover this subchart while it was a hostPath/hostPort
+          # DaemonSet. With host access removed above, the collector is now
+          # restricted-able, so it carries the same four container fields.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            runAsNonRoot: true
+            seccompProfile: { type: RuntimeDefault }
+          podSecurityContext:
+            runAsNonRoot: true
+            seccompProfile: { type: RuntimeDefault }
+          # The Service the demo components dial (OTEL_COLLECTOR_NAME) stays
+          # `otel-collector` in either mode (fullnameOverride, above the chart's
+          # `-agent` workload suffix), so no other component config changes.
           config:
             exporters:
               otlp/lgtm:
