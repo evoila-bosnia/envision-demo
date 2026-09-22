@@ -85,11 +85,37 @@ spec:
               otlp/lgtm:
                 endpoint: otel-lgtm.envision-demo.svc.cluster.local:4317
                 tls: { insecure: true }
+            # The chart's default collector config declares a `span_metrics`
+            # connector: the traces pipeline exports spans INTO it and the metrics
+            # pipeline receives derived RED metrics back OUT of it. A connector must
+            # sit on both a producing (exporter) and a consuming (receiver) pipeline
+            # or the collector refuses to build. Overriding only each pipeline's
+            # `exporters` below dropped span_metrics from the traces exporters
+            # (Helm REPLACES list values, it does not merge them), while the chart
+            # default kept span_metrics in the metrics `receivers` -- leaving the
+            # connector with a consumer but no producer. The collector then
+            # CrashLoops:
+            #   failed to build pipelines: connector "span_metrics" used as
+            #   receiver in [metrics] pipeline but not used in any supported
+            #   exporter pipeline
+            # Re-declare the connector and pin both of its wiring ends here, under
+            # one consistent name (`span_metrics`), so the derived span metrics are
+            # produced again and still reach LGTM via the metrics pipeline.
+            connectors:
+              span_metrics: {}
             service:
               pipelines:
-                traces:  { exporters: [otlp/lgtm] }
-                metrics: { exporters: [otlp/lgtm] }
-                logs:    { exporters: [otlp/lgtm] }
+                # span_metrics joins otlp/lgtm as a traces exporter: LGTM stores the
+                # spans, the connector converts them into metrics.
+                traces:
+                  exporters: [otlp/lgtm, span_metrics]
+                # span_metrics stays a metrics receiver (chart default); the other
+                # default receivers are kept so all metrics still flow to LGTM.
+                metrics:
+                  receivers: [otlp, kafkametrics, span_metrics, prometheus/ad]
+                  exporters: [otlp/lgtm]
+                logs:
+                  exporters: [otlp/lgtm]
         # --- PodSecurity 'restricted' defaults applied to every component that has
         #     no per-component override below (image-provider, fraud-detection, and
         #     the componentised main containers inherit these) ---
