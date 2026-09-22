@@ -12,8 +12,17 @@ spec:
     metadata:
       labels: { app: otel-lgtm }
     spec:
+      # NOTE (PodSecurity): grafana/otel-lgtm has NO USER in its Dockerfile and
+      # writes to the in-image /otel-lgtm tree (root-owned) as well as /data, so it
+      # runs as root and CANNOT satisfy the 'restricted' runAsNonRoot rule without a
+      # non-root LGTM image. We apply the baseline-compatible hardening that does not
+      # require non-root (no privilege escalation, drop all capabilities, seccomp
+      # RuntimeDefault) and keep fsGroup for the /data PVC. This pod needs the
+      # namespace at 'baseline' (see PR body: observability layer is the blocker).
       securityContext:
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: otel-lgtm
           image: grafana/otel-lgtm:0.33.1   # pinned (release v0.33.1). VERIFY tag at apply.
@@ -31,6 +40,12 @@ spec:
             httpGet: { path: /api/health, port: grafana }
             initialDelaySeconds: 20
             periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: data
               mountPath: /data     # LGTM persists prom/loki/tempo under /data; verify at apply

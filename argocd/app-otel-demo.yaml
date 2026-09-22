@@ -10,6 +10,15 @@
 #    and references them in pipelines. Replacing the per-pipeline `exporters`
 #    lists with [otlp/lgtm] drops the removed backends (unreferenced exporters
 #    are never instantiated, so leaving them defined is harmless).
+#
+# PodSecurity 'restricted': the values below add restricted-profile securityContext
+# to every enabled demo component (see PR fix/psa-restricted-compliance). The chart
+# renders `default.securityContext` at container level and `default.podSecurityContext`
+# at pod level for any component that does not set its own; components with their own
+# block are deep-merged (Helm values merge) with the three missing restricted fields.
+# Root-by-default images are pinned to a non-root uid; the seven busybox initContainers
+# are re-declared with a securityContext because the chart renders initContainers
+# verbatim.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -81,11 +90,215 @@ spec:
                 traces:  { exporters: [otlp/lgtm] }
                 metrics: { exporters: [otlp/lgtm] }
                 logs:    { exporters: [otlp/lgtm] }
-        # --- expose the demo UI on a Foundation LB VIP (verify key vs 0.42.0) ---
+        # --- PodSecurity 'restricted' defaults applied to every component that has
+        #     no per-component override below (image-provider, fraud-detection, and
+        #     the componentised main containers inherit these) ---
+        default:
+          securityContext:                 # container-level
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          podSecurityContext:              # pod-level (init/sidecar containers inherit)
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
         components:
+          # === expose the demo UI on a Foundation LB VIP + harden envoy (uid 101) ===
           frontend-proxy:
             service:
               type: LoadBalancer
+            securityContext:               # deep-merges with chart's runAsUser 101 (envoy)
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              seccompProfile: { type: RuntimeDefault }
+          # === chart already pins a non-root uid; add the 3 missing restricted fields ===
+          frontend:
+            securityContext:               # chart runAsUser 1001 (nextjs)
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              seccompProfile: { type: RuntimeDefault }
+          payment:
+            securityContext:               # chart runAsUser 1000
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              seccompProfile: { type: RuntimeDefault }
+          quote:
+            securityContext:               # chart runAsUser 33 (www-data)
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              seccompProfile: { type: RuntimeDefault }
+          kafka:
+            securityContext:               # chart runAsUser 1000 (appuser)
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              seccompProfile: { type: RuntimeDefault }
+          valkey-cart:
+            securityContext:               # chart runAsUser 999
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              seccompProfile: { type: RuntimeDefault }
+          telemetry-docs:
+            securityContext:               # chart runAsUser 101
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              seccompProfile: { type: RuntimeDefault }
+          # === non-root image (65532) + readOnlyRootFilesystem + tmp emptyDir + init ===
+          checkout:
+            securityContext:               # deep-merges with chart readOnlyRootFilesystem
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              runAsNonRoot: true
+              seccompProfile: { type: RuntimeDefault }
+            podSecurityContext:            # fsGroup so the 65532 user can write the tmp emptyDir
+              runAsNonRoot: true
+              fsGroup: 65532
+              seccompProfile: { type: RuntimeDefault }
+            initContainers:
+              - name: wait-for-kafka
+                image: busybox:latest
+                command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities: { drop: ["ALL"] }
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  seccompProfile: { type: RuntimeDefault }
+          product-catalog:
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              runAsNonRoot: true
+              seccompProfile: { type: RuntimeDefault }
+            podSecurityContext:
+              runAsNonRoot: true
+              fsGroup: 65532
+              seccompProfile: { type: RuntimeDefault }
+            initContainers:
+              - name: wait-for-astronomy-db
+                image: busybox:latest
+                command: ["sh", "-c", "until nc -z -v -w30 astronomy-db 5432; do echo waiting for astronomy-db; sleep 2; done;"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities: { drop: ["ALL"] }
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  seccompProfile: { type: RuntimeDefault }
+          shipping:
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities: { drop: ["ALL"] }
+              runAsNonRoot: true
+              seccompProfile: { type: RuntimeDefault }
+            podSecurityContext:
+              runAsNonRoot: true
+              fsGroup: 65532
+              seccompProfile: { type: RuntimeDefault }
+            initContainers:
+              - name: wait-for-flagd
+                image: busybox:latest
+                command: ["sh", "-c", "until nc -z -v -w30 flagd 8013; do echo waiting for flagd; sleep 2; done;"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities: { drop: ["ALL"] }
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  seccompProfile: { type: RuntimeDefault }
+          # === non-root image (65532) with a busybox init (main inherits default sc) ===
+          fraud-detection:
+            initContainers:
+              - name: wait-for-kafka
+                image: busybox:latest
+                command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities: { drop: ["ALL"] }
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  seccompProfile: { type: RuntimeDefault }
+          # === root-by-default image + busybox init: pin a non-root uid pod-wide ===
+          accounting:
+            podSecurityContext:
+              runAsNonRoot: true
+              runAsUser: 65534
+              runAsGroup: 65534
+              seccompProfile: { type: RuntimeDefault }
+            initContainers:
+              - name: wait-for-kafka
+                image: busybox:latest
+                command: ["sh", "-c", "until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities: { drop: ["ALL"] }
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  seccompProfile: { type: RuntimeDefault }
+          cart:
+            podSecurityContext:
+              runAsNonRoot: true
+              runAsUser: 65534
+              runAsGroup: 65534
+              seccompProfile: { type: RuntimeDefault }
+            initContainers:
+              - name: wait-for-valkey-cart
+                image: busybox:latest
+                command: ["sh", "-c", "until nc -z -v -w30 valkey-cart 6379; do echo waiting for valkey-cart; sleep 2; done;"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities: { drop: ["ALL"] }
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  seccompProfile: { type: RuntimeDefault }
+          # === root-by-default images (no init): pin a non-root uid pod-wide ===
+          ad:          { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          agent:       { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          chatbot:     { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          currency:    { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          email:       { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          mcp:         { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          recommendation: { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          opamp-server:   { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          # load-generator (locust, root image): pinned non-root; SMOKE-TEST — locust
+          # must be able to read its scenario files as uid 65534 (see PR body).
+          load-generator: { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          # === flagd: main (65532) + flagd-ui sidecar (root) + busybox init-config +
+          #     config-rw emptyDir shared by all three -> pin uid + fsGroup pod-wide ===
+          flagd:
+            podSecurityContext:
+              runAsNonRoot: true
+              runAsUser: 65534
+              runAsGroup: 65534
+              fsGroup: 65534
+              seccompProfile: { type: RuntimeDefault }
+            initContainers:
+              - name: init-config
+                image: busybox
+                command: ["sh", "-c", "cp /config-ro/demo.flagd.json /config-rw/demo.flagd.json && cat /config-rw/demo.flagd.json"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities: { drop: ["ALL"] }
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  seccompProfile: { type: RuntimeDefault }
+                volumeMounts:
+                  - mountPath: /config-ro
+                    name: config-ro
+                  - mountPath: /config-rw
+                    name: config-rw
+          # === astronomy-db (postgres 18, root-by-default): run as the postgres uid
+          #     999 with a matching fsGroup so PGDATA (emptyDir) is writable.
+          #     SMOKE-TEST — the postgres entrypoint expects either root or a writable
+          #     PGDATA; verify initdb succeeds non-root before flipping to restricted
+          #     (see PR body — candidate baseline component). ===
+          astronomy-db:
+            podSecurityContext:
+              runAsNonRoot: true
+              runAsUser: 999
+              runAsGroup: 999
+              fsGroup: 999
+              seccompProfile: { type: RuntimeDefault }
   destination:
     server: https://kubernetes.default.svc
     namespace: envision-demo
