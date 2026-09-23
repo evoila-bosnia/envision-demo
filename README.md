@@ -40,7 +40,7 @@ and is stateless (no StorageClass needed).
 ## Secrets (created out of band)
 The otel-lgtm Deployment reads its Grafana admin credentials from a Kubernetes
 Secret named `grafana-admin` in the `envision-demo` namespace, with keys
-`admin-user` and `admin-password`. This Secret is **not** in this repo — the
+`GF_SECURITY_ADMIN_USER` and `GF_SECURITY_ADMIN_PASSWORD`. This Secret is **not** in this repo — the
 operator creates it on the cluster out of band (governed, from a Vault
 reference). Because the env vars use `optional: false`, the otel-lgtm pod will
 not start until the `grafana-admin` Secret exists in the namespace.
