@@ -36,13 +36,13 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: grafana-admin
-                  key: admin-user
+                  key: GF_SECURITY_ADMIN_USER
                   optional: false
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: grafana-admin
-                  key: admin-password
+                  key: GF_SECURITY_ADMIN_PASSWORD
                   optional: false
           ports:
             - { name: grafana,   containerPort: 3000, protocol: TCP }
