@@ -306,9 +306,23 @@ spec:
           mcp:         { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
           recommendation: { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
           opamp-server:   { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
-          # load-generator (locust, root image): pinned non-root; SMOKE-TEST — locust
-          # must be able to read its scenario files as uid 65534 (see PR body).
-          load-generator: { podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } } }
+          # load-generator (locust, root image): pinned non-root uid 65534. Browser
+          # traffic is OFF. With it on, one Playwright user launches headless
+          # Chromium and the container runs ~120 processes/threads (~13 without).
+          # As a non-root uid those count against the per-uid process limit
+          # (RLIMIT_NPROC), which the kernel counts node-wide across EVERY
+          # container that runs as 65534. Root is exempt, consistent with the
+          # pre-hardening root pod running fine. Under such a limit, locust exits
+          # about 30s after start with no stdout/stderr (its logs go only to
+          # OTLP), and the pod CrashLoops with empty logs. Trade-off: the 1-in-10
+          # Chromium user (browser/RUM spans) is dropped. All 5 locust users are
+          # now HTTP users, so backend traces, metrics and flagd-driven scenarios
+          # are unchanged. `envOverrides` merges by name into the chart's env list.
+          load-generator:
+            podSecurityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, seccompProfile: { type: RuntimeDefault } }
+            envOverrides:
+              - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+                value: "false"
           # === flagd: main (65532) + flagd-ui sidecar (root) + busybox init-config +
           #     config-rw emptyDir shared by all three -> pin uid + fsGroup pod-wide ===
           flagd:
