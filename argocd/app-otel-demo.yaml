@@ -16,7 +16,8 @@
 # renders `default.securityContext` at container level and `default.podSecurityContext`
 # at pod level for any component that does not set its own; components with their own
 # block are deep-merged (Helm values merge) with the three missing restricted fields.
-# Root-by-default images are pinned to a non-root uid; the seven busybox initContainers
+# Root-by-default images are pinned to a non-root uid (accounting is pinned to
+# its image's own non-root uid 1654); the seven busybox initContainers
 # are re-declared with a securityContext because the chart renders initContainers
 # verbatim.
 apiVersion: argoproj.io/v1alpha1
@@ -60,6 +61,13 @@ spec:
           # clusterMetrics stay on: both talk only to the Kubernetes API (via the
           # chart's ServiceAccount + ClusterRole), need no host access, and keep
           # cluster-level telemetry flowing to LGTM.
+          # Replace the pod instead of surging a second one. With replicaCount 1
+          # the default RollingUpdate (25% surge, 0 unavailable) must schedule the
+          # new pod next to the old one, which a memory-tight demo cluster cannot
+          # always do: the rollout then hangs at ProgressDeadlineExceeded. The
+          # collector is a stateless gateway, so a few seconds of restart is fine.
+          rollout:
+            strategy: Recreate
           presets:
             hostMetrics:   { enabled: false }
             kubeletMetrics: { enabled: false }
@@ -131,6 +139,10 @@ spec:
             runAsNonRoot: true
             seccompProfile:
               type: RuntimeDefault
+        # NOTE: chart 0.42.0 has no rollout-strategy key for the demo components
+        # (its Deployment template renders only replicas/revisionHistoryLimit), so
+        # they keep the Kubernetes default RollingUpdate (surge 1 at 1 replica);
+        # only the collector subchart's `rollout` above is configurable here.
         components:
           # === expose the demo UI on a Foundation LB VIP + harden envoy (uid 101) ===
           frontend-proxy:
@@ -244,12 +256,19 @@ spec:
                   runAsNonRoot: true
                   runAsUser: 65534
                   seccompProfile: { type: RuntimeDefault }
-          # === root-by-default image + busybox init: pin a non-root uid pod-wide ===
+          # === accounting (.NET): the image is NOT root-by-default. Its Dockerfile
+          #     ends `USER app` (uid/gid 1654, from the dotnet/aspnet base) and its
+          #     entrypoint /app/instrument.sh is mode 0744 owned by app, so only
+          #     uid 1654 may execute it. Pinning 65534 made runc fail with
+          #     `exec: "./instrument.sh": permission denied` before any output
+          #     (CrashLoopBackOff, empty logs). Pin the image's own uid; it has to
+          #     be numeric because `app` is a name and runAsNonRoot cannot verify
+          #     a non-numeric image USER. ===
           accounting:
             podSecurityContext:
               runAsNonRoot: true
-              runAsUser: 65534
-              runAsGroup: 65534
+              runAsUser: 1654
+              runAsGroup: 1654
               seccompProfile: { type: RuntimeDefault }
             initContainers:
               - name: wait-for-kafka
@@ -261,6 +280,7 @@ spec:
                   runAsNonRoot: true
                   runAsUser: 65534
                   seccompProfile: { type: RuntimeDefault }
+          # === root-by-default image + busybox init: pin a non-root uid pod-wide ===
           cart:
             podSecurityContext:
               runAsNonRoot: true
